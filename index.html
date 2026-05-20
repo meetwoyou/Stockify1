@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Stockify Pro Ultra — Smart Inventory Management</title>
+<meta name="description" content="Stockify Pro Ultra — AI-powered inventory management with barcode scanning, expiry tracking, and smart analytics.">
+<meta name="theme-color" content="#16a34a">
+<link rel="manifest" href="manifest.json">
+
+<!-- TAILWIND -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- ICONS -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<!-- SCANNER (load early so camera is ready when Scanner page opens) -->
+<script src="https://unpkg.com/html5-qrcode"></script>
+<!-- CHARTS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- FIREBASE -->
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
+<script>
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          primary: "#16a34a",
+          primaryDark: "#15803d",
+          darkBg: "#020617",
+          surface: "#0f172a"
+        },
+        fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] }
+      }
+    }
+  };
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+<style>
+* { -webkit-tap-highlight-color: transparent; }
+html { scroll-behavior: smooth; }
+body { font-family: 'Inter', system-ui, sans-serif; background: #020617; }
+
+.glass { background: rgba(15,23,42,.75); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
+.page-view { animation: fade .35s ease; }
+@keyframes fade { from { opacity:0; transform: translateY(12px);} to {opacity:1; transform: translateY(0);} }
+.no-scrollbar::-webkit-scrollbar { display:none; }
+.no-scrollbar { -ms-overflow-style:none; scrollbar-width:none; }
+
+.nav-btn { width:100%; display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:14px; font-weight:600; color:#94a3b8; text-align:left; transition:all .2s; }
+.nav-btn:hover { background: rgba(30,41,59,.6); color:white; }
+.nav-btn.active { background:#16a34a; color:white; box-shadow:0 8px 24px -8px rgba(22,163,74,.5); }
+
+.mob-nav-btn { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:10px; font-weight:600; color:#64748b; padding:8px 12px; transition:color .2s; }
+.mob-nav-btn.active { color:#16a34a; }
+.mob-nav-btn.mob-scan { width:56px; height:56px; border-radius:999px; background:#16a34a; color:white; margin-top:-28px; box-shadow:0 12px 28px -8px rgba(22,163,74,.6); justify-content:center; }
+.mob-nav-btn.mob-scan span { display:none; }
+
+.stat-card { background: rgba(15,23,42,.6); border:1px solid #1e293b; border-radius:18px; padding:18px; transition:transform .2s, border-color .2s; }
+.stat-card:hover { transform: translateY(-2px); border-color:#334155; }
+.stat-icon { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; }
+.stat-label { font-size:11px; text-transform:uppercase; letter-spacing:.15em; color:#64748b; font-weight:700; margin-top:14px; }
+.stat-value { font-size:28px; font-weight:900; margin-top:4px; }
+
+.filter-chip { padding:8px 16px; border-radius:999px; background: rgba(15,23,42,.6); border:1px solid #1e293b; font-size:13px; font-weight:600; color:#94a3b8; white-space:nowrap; transition:all .2s; flex-shrink:0; }
+.filter-chip:hover { color:white; border-color:#334155; }
+.filter-chip.active { background:#16a34a; border-color:#16a34a; color:white; }
+
+.form-label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:#64748b; font-weight:700; margin-bottom:6px; }
+.form-input { width:100%; background:#020617; border:1px solid #1e293b; border-radius:12px; padding:12px 14px; color:white; font-size:14px; transition:border-color .2s; }
+.form-input:focus { outline:none; border-color:#16a34a; }
+
+.prod-card { background: rgba(15,23,42,.6); border:1px solid #1e293b; border-radius:18px; overflow:hidden; transition:transform .25s, border-color .25s, box-shadow .25s; cursor:pointer; }
+.prod-card:hover { transform: translateY(-3px); border-color:#16a34a; box-shadow:0 16px 40px -16px rgba(22,163,74,.3); }
+.prod-card img { width:100%; height:170px; object-fit:cover; background:#0f172a; }
+
+.badge { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+.badge-expired { background: rgba(239,68,68,.15); color:#f87171; }
+.badge-expiring { background: rgba(245,158,11,.15); color:#fbbf24; }
+.badge-ok { background: rgba(22,163,74,.15); color:#4ade80; }
+
+.toast { pointer-events:auto; min-width:240px; background: rgba(15,23,42,.95); backdrop-filter: blur(14px); border:1px solid #1e293b; border-left-width:4px; border-radius:12px; padding:12px 16px; font-size:14px; font-weight:600; box-shadow:0 12px 30px -10px rgba(0,0,0,.6); animation: slideIn .25s ease; }
+.toast.success { border-left-color:#16a34a; }
+.toast.error { border-left-color:#ef4444; }
+.toast.info { border-left-color:#3b82f6; }
+@keyframes slideIn { from { opacity:0; transform: translateX(20px);} to {opacity:1; transform: translateX(0);} }
+
+html:not(.dark) body { background:#f8fafc; color:#0f172a; }
+html:not(.dark) .glass { background: rgba(255,255,255,.85); }
+html:not(.dark) .stat-card, html:not(.dark) .prod-card, html:not(.dark) .filter-chip { background:white; border-color:#e2e8f0; }
+html:not(.dark) .stat-label, html:not(.dark) .form-label { color:#64748b; }
+html:not(.dark) .form-input { background:white; border-color:#e2e8f0; color:#0f172a; }
+html:not(.dark) .nav-btn { color:#475569; }
+html:not(.dark) .nav-btn:hover { background:#f1f5f9; color:#0f172a; }
+
+#scanner-container video { border-radius:14px; }
+#scanner-container > div { border:none !important; }
+</style>
+</head>
+
+<body class="text-white min-h-screen pb-28 xl:pb-8">
+
+<div id="toast-stack" class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none"></div>
+
+<!-- INSTALL BANNER (shown when browser fires beforeinstallprompt) -->
+<div id="install-banner" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-[90] glass border border-primary/40 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-2xl max-w-md w-[92%]">
+  <div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center flex-shrink-0">
+    <i data-lucide="download" class="w-5 h-5"></i>
+  </div>
+  <div class="flex-1 min-w-0">
+    <p class="font-bold text-sm">Install Stockify</p>
+    <p class="text-xs text-slate-400">Works fully offline after install.</p>
+  </div>
+  <button onclick="triggerInstall()" class="bg-primary hover:bg-primaryDark px-3 py-1.5 rounded-lg text-xs font-bold">Install</button>
+  <button onclick="dismissInstall()" class="text-slate-500 hover:text-white" aria-label="Dismiss"><i data-lucide="x" class="w-4 h-4"></i></button>
+</div>
+
+<main class="max-w-[1800px] mx-auto p-4 md:p-6 xl:p-8 xl:grid xl:grid-cols-[300px_1fr] xl:gap-8">
+
+  <aside class="hidden xl:block">
+    <div class="glass border border-slate-800 rounded-[2rem] p-6 sticky top-8 shadow-2xl">
+      <div class="flex items-center gap-3 mb-10">
+        <div class="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
+          <i data-lucide="package" class="w-7 h-7"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-black leading-none">Stockify</h1>
+          <p class="text-[10px] uppercase tracking-[0.35em] text-slate-500 font-bold mt-1">Pro Ultra</p>
+        </div>
+      </div>
+      <nav class="space-y-1.5">
+        <button data-nav="dashboard" class="nav-btn"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span>Dashboard</span></button>
+        <button data-nav="products" class="nav-btn"><i data-lucide="boxes" class="w-5 h-5"></i><span>Products</span></button>
+        <button data-nav="scanner" class="nav-btn"><i data-lucide="scan-line" class="w-5 h-5"></i><span>AI Scanner</span></button>
+        <button data-nav="settings" class="nav-btn"><i data-lucide="settings" class="w-5 h-5"></i><span>Settings</span></button>
+      </nav>
+      <div class="mt-10 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+        <p class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Status</p>
+        <p class="text-sm font-semibold mt-1 flex items-center gap-2">
+          <span id="net-dot" class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+          <span id="net-label">Online · synced</span>
+        </p>
+        <p class="text-[10px] text-slate-500 mt-2">Firebase + Cloudinary</p>
+      </div>
+    </div>
+  </aside>
+
+  <section class="space-y-6">
+
+    <!-- DASHBOARD -->
+    <section id="page-dashboard" class="page-view">
+      <div class="glass border border-slate-800 rounded-[2rem] p-6 md:p-8 shadow-2xl">
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-3xl md:text-4xl font-black">Dashboard</h1>
+            <p class="text-xs uppercase tracking-[0.3em] text-slate-500 mt-2">Smart Analytics System</p>
+          </div>
+          <button onclick="openAddProductForm()" class="bg-primary hover:bg-primaryDark transition px-5 py-3 rounded-xl font-bold text-white flex items-center gap-2 shadow-lg shadow-primary/20">
+            <i data-lucide="plus" class="w-4 h-4"></i> Add Product
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+          <div class="stat-card"><div class="stat-icon bg-blue-500/15 text-blue-400"><i data-lucide="package" class="w-5 h-5"></i></div><p class="stat-label">Total Products</p><p id="dash-total" class="stat-value">0</p></div>
+          <div class="stat-card"><div class="stat-icon bg-amber-500/15 text-amber-400"><i data-lucide="clock-alert" class="w-5 h-5"></i></div><p class="stat-label">Expiring Soon</p><p id="dash-expiring" class="stat-value">0</p></div>
+          <div class="stat-card"><div class="stat-icon bg-red-500/15 text-red-400"><i data-lucide="circle-x" class="w-5 h-5"></i></div><p class="stat-label">Expired</p><p id="dash-expired" class="stat-value">0</p></div>
+          <div class="stat-card"><div class="stat-icon bg-primary/15 text-primary"><i data-lucide="tags" class="w-5 h-5"></i></div><p class="stat-label">Categories</p><p id="dash-category" class="stat-value">0</p></div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+          <div class="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-bold">Inventory by Category</h3><span class="text-xs text-slate-500">Live</span>
+            </div>
+            <div class="relative h-72"><canvas id="chart-category"></canvas></div>
+          </div>
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+            <h3 class="font-bold mb-4">Stock Health</h3>
+            <div class="relative h-72"><canvas id="chart-health"></canvas></div>
+          </div>
+        </div>
+
+        <div class="mt-6 bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold">Expiring Soon (next 30 days)</h3>
+            <button onclick="switchPage('products'); setFilter('expiring')" class="text-xs text-primary hover:underline">View all</button>
+          </div>
+          <div id="dash-expiring-list" class="space-y-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRODUCTS -->
+    <section id="page-products" class="page-view hidden">
+      <div class="glass border border-slate-800 rounded-[2rem] p-6 md:p-8 shadow-2xl">
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-3xl md:text-4xl font-black">Products</h1>
+            <p class="text-xs uppercase tracking-[0.3em] text-slate-500 mt-2">Inventory Catalog</p>
+          </div>
+          <button onclick="openAddProductForm()" class="bg-primary hover:bg-primaryDark transition px-5 py-3 rounded-xl font-bold text-white flex items-center gap-2 shadow-lg shadow-primary/20">
+            <i data-lucide="plus" class="w-4 h-4"></i> Add Product
+          </button>
+        </div>
+        <div class="relative mt-6">
+          <i data-lucide="search" class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+          <input id="search-input" oninput="renderProducts()" placeholder="Search by name or SKU..." class="w-full bg-slate-900 pl-11 pr-4 py-3.5 rounded-xl border border-slate-800 focus:border-primary focus:outline-none transition" />
+        </div>
+        <div id="filter-chips" class="flex gap-2 mt-4 overflow-x-auto no-scrollbar pb-1"></div>
+        <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-6"></div>
+        <div id="empty-state" class="hidden text-center py-16">
+          <div class="w-20 h-20 mx-auto rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-4">
+            <i data-lucide="package-search" class="w-9 h-9 text-slate-600"></i>
+          </div>
+          <p class="text-slate-400 font-semibold">No products found</p>
+          <p class="text-slate-600 text-sm mt-1">Try adjusting search or filters</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCANNER -->
+    <section id="page-scanner" class="page-view hidden">
+      <div class="glass border border-slate-800 rounded-[2rem] p-6 md:p-8 shadow-2xl">
+        <div class="text-center">
+          <h1 class="text-3xl md:text-4xl font-black">AI Scanner</h1>
+          <p class="text-xs uppercase tracking-[0.3em] text-slate-500 mt-2">Point camera at barcode or QR</p>
+        </div>
+        <div class="mt-6 relative max-w-2xl mx-auto">
+          <div id="scanner-container" class="w-full aspect-square bg-black rounded-2xl overflow-hidden border-2 border-slate-800"></div>
+          <div id="scanner-placeholder" class="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-500 text-sm">Starting camera…</div>
+        </div>
+        <div class="mt-5 flex gap-3 justify-center">
+          <button id="scan-start-btn" onclick="startScanner()" class="bg-primary hover:bg-primaryDark px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-primary/20"><i data-lucide="play" class="w-4 h-4"></i> Start</button>
+          <button id="scan-stop-btn" onclick="stopScanner()" class="hidden bg-red-500 hover:bg-red-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2"><i data-lucide="square" class="w-4 h-4"></i> Stop</button>
+        </div>
+        <div class="mt-6 max-w-2xl mx-auto bg-slate-900/60 border border-slate-800 rounded-2xl p-4 text-sm text-slate-400">
+          <p class="font-semibold text-white mb-1 flex items-center gap-2"><i data-lucide="info" class="w-4 h-4"></i> How it works</p>
+          Scan a known SKU to view details. Unknown codes prompt you to add a new product.
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="page-settings" class="page-view hidden">
+      <div class="glass border border-slate-800 rounded-[2rem] p-6 md:p-8 shadow-2xl">
+        <h1 class="text-3xl md:text-4xl font-black">Settings</h1>
+        <p class="text-xs uppercase tracking-[0.3em] text-slate-500 mt-2">App Preferences</p>
+        <div class="mt-6 space-y-4 max-w-2xl">
+          <div class="bg-gradient-to-br from-primary/10 to-slate-900/60 border border-slate-800 rounded-2xl p-5">
+            <p class="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-bold mb-3">Developer</p>
+            <div class="flex items-center gap-4">
+              <div class="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center text-2xl font-black shadow-lg shadow-primary/30 overflow-hidden flex-shrink-0">
+                <img src="sabbir.jpg" alt="Sabbir Hosen Akash"
+                     class="w-full h-full object-cover"
+                     onerror="this.replaceWith(Object.assign(document.createElement('span'),{innerText:'S'}))" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="font-black text-lg">Sabbir Hosen Akash</p>
+                <p class="text-xs text-primary font-semibold">Full-Stack Developer</p>
+                <p class="text-xs text-slate-400 mt-0.5">Designer of Stockify Pro Ultra</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mt-4">
+              <a href="https://sabbirhosenakash.github.io" target="_blank" rel="noopener" class="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl py-2.5 flex flex-col items-center gap-1 transition">
+                <i data-lucide="globe" class="w-4 h-4 text-primary"></i>
+                <span class="text-[10px] font-bold text-slate-300">Website</span>
+              </a>
+              <a href="https://facebook.com/" target="_blank" rel="noopener" class="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl py-2.5 flex flex-col items-center gap-1 transition">
+                <i data-lucide="facebook" class="w-4 h-4 text-blue-400"></i>
+                <span class="text-[10px] font-bold text-slate-300">Facebook</span>
+              </a>
+              <a href="https://Instagram.com/sabbirhosenakash" target="_blank" rel="noopener" class="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl py-2.5 flex flex-col items-center gap-1 transition">
+                <i data-lucide="instagram" class="w-4 h-4 text-pink-400"></i>
+                <span class="text-[10px] font-bold text-slate-300">Instagram</span>
+              </a>
+            </div>
+          </div>
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
+            <div><p class="font-bold">Install App</p><p class="text-xs text-slate-500 mt-1">Add to home screen — works offline</p></div>
+            <button onclick="triggerInstall()" class="bg-primary hover:bg-primaryDark px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> Install</button>
+          </div>
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
+            <div><p class="font-bold">Theme</p><p class="text-xs text-slate-500 mt-1">Switch light / dark mode</p></div>
+            <button onclick="toggleTheme()" class="bg-primary hover:bg-primaryDark px-5 py-2.5 rounded-xl font-bold">Toggle</button>
+          </div>
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
+            <div><p class="font-bold">Export Inventory</p><p class="text-xs text-slate-500 mt-1">Download CSV of all products</p></div>
+            <button onclick="exportCSV()" class="bg-slate-800 hover:bg-slate-700 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> CSV</button>
+          </div>
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+            <p class="font-bold">About</p>
+            <p class="text-sm text-slate-400 mt-2">Stockify Pro Ultra v1.0 — Built with Firebase &amp; Cloudinary.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </section>
+</main>
+
+<nav class="xl:hidden fixed bottom-0 left-0 right-0 glass border-t border-slate-800 h-20 flex justify-around items-center z-40">
+  <button data-nav="dashboard" class="mob-nav-btn"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span>Home</span></button>
+  <button data-nav="products" class="mob-nav-btn"><i data-lucide="boxes" class="w-5 h-5"></i><span>Products</span></button>
+  <button data-nav="scanner" class="mob-nav-btn mob-scan"><i data-lucide="scan-line" class="w-6 h-6"></i></button>
+  <button data-nav="settings" class="mob-nav-btn"><i data-lucide="settings" class="w-5 h-5"></i><span>Settings</span></button>
+</nav>
+
+<!-- PRODUCT FORM MODAL -->
+<div id="product-form-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-6">
+  <div class="bg-surface border border-slate-800 rounded-t-3xl md:rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
+    <div class="sticky top-0 bg-surface border-b border-slate-800 px-6 py-4 flex items-center justify-between z-10">
+      <h2 id="form-title" class="text-xl font-black">Add Product</h2>
+      <button onclick="closeProductForm()" class="w-9 h-9 rounded-lg hover:bg-slate-800 flex items-center justify-center"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <form id="product-form" onsubmit="saveProduct(event)" class="p-6 space-y-4">
+      <input type="hidden" id="form-id" />
+      <div>
+        <label class="form-label">Product Image</label>
+        <div class="flex items-center gap-4">
+          <div id="form-image-preview" class="w-24 h-24 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <i data-lucide="image" class="w-7 h-7 text-slate-600"></i>
+          </div>
+          <div class="flex-1">
+            <input type="file" id="form-image-file" accept="image/*" class="hidden" onchange="uploadImage(event)" />
+            <input type="file" id="form-image-camera" accept="image/*" capture="environment" class="hidden" onchange="captureImage(event)" />
+            <div class="flex gap-2 flex-wrap">
+              <button type="button" onclick="document.getElementById('form-image-file').click()" class="bg-slate-800 hover:bg-slate-700 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
+                <i data-lucide="upload" class="w-4 h-4"></i> <span id="upload-btn-label">Upload</span>
+              </button>
+              <button type="button" onclick="document.getElementById('form-image-camera').click()" class="bg-primary hover:bg-primaryDark px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
+                <i data-lucide="camera" class="w-4 h-4"></i> <span id="camera-btn-label">Camera</span>
+              </button>
+            </div>
+            <input type="hidden" id="form-image" />
+            <p class="text-xs text-slate-500 mt-2">Auto-compressed to ~250 KB before upload.</p>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div><label class="form-label">Name *</label><input id="form-name" required class="form-input" /></div>
+        <div><label class="form-label">SKU / Barcode *</label><input id="form-sku" required class="form-input" /></div>
+        <div>
+          <label class="form-label">Category *</label>
+          <div class="flex gap-2">
+            <input id="form-category" list="category-list" required class="form-input flex-1" placeholder="Tap browse to pick existing" onfocus="openCategoryPicker()" />
+            <button type="button" onclick="openCategoryPicker()" class="bg-slate-800 hover:bg-slate-700 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 flex-shrink-0">
+              <i data-lucide="list" class="w-4 h-4"></i> Browse
+            </button>
+          </div>
+          <datalist id="category-list"></datalist>
+        </div>
+        <div><label class="form-label">Expiry Date *</label><input id="form-expiry" type="date" required class="form-input" /></div>
+        <div><label class="form-label">Cartons</label><input id="form-cartons" type="number" min="0" value="0" oninput="recalcTotal()" class="form-input" /></div>
+        <div><label class="form-label">Pieces / Carton</label><input id="form-pcs-per" type="number" min="0" value="0" oninput="recalcTotal()" class="form-input" /></div>
+        <div><label class="form-label">Total Pieces</label><input id="form-total-pcs" type="number" min="0" value="0" class="form-input" /></div>
+        <div><label class="form-label">Carton Price (৳)</label><input id="form-carton-price" type="number" min="0" step="0.01" value="0" oninput="syncPriceFromCarton()" class="form-input" /></div>
+        <div><label class="form-label">Piece Price (৳)</label><input id="form-piece-price" type="number" min="0" step="0.01" value="0" oninput="syncPriceFromPiece()" class="form-input" /></div>
+        <p class="md:col-span-2 text-[11px] text-slate-500 -mt-2">Tip: enter one price — the other fills automatically using Pieces/Carton.</p>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" onclick="closeProductForm()" class="flex-1 bg-slate-800 hover:bg-slate-700 py-3 rounded-xl font-bold">Cancel</button>
+        <button type="submit" id="form-submit-btn" class="flex-1 bg-primary hover:bg-primaryDark py-3 rounded-xl font-bold">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- SCAN RESULT MODAL -->
+<div id="scan-result-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-6">
+  <div class="bg-surface border border-slate-800 rounded-t-3xl md:rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+    <div class="relative">
+      <img id="scan-product-image" class="w-full h-56 object-cover bg-slate-900" />
+      <button onclick="closeScanModal()" class="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 backdrop-blur flex items-center justify-center"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div class="p-6">
+      <p id="scan-product-category" class="text-xs uppercase tracking-widest text-primary font-bold"></p>
+      <h2 id="scan-product-name" class="text-2xl font-black mt-1"></h2>
+      <p class="text-xs text-slate-500 mt-1">SKU: <span id="scan-product-sku"></span></p>
+      <div class="grid grid-cols-2 gap-3 mt-5">
+        <div class="bg-slate-900 rounded-xl p-3"><p class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Stock</p><p class="text-lg font-black mt-1"><span id="scan-product-stock"></span> pcs</p></div>
+        <div class="bg-slate-900 rounded-xl p-3"><p class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Expiry</p><p class="text-lg font-black mt-1" id="scan-product-expiry"></p></div>
+        <div class="bg-slate-900 rounded-xl p-3"><p class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Carton</p><p class="text-lg font-black mt-1" id="scan-product-carton"></p></div>
+        <div class="bg-slate-900 rounded-xl p-3"><p class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Piece</p><p class="text-lg font-black mt-1" id="scan-product-piece"></p></div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="editFromScan()" class="flex-1 bg-slate-800 hover:bg-slate-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2"><i data-lucide="pencil" class="w-4 h-4"></i> Edit</button>
+        <button onclick="closeScanModal()" class="flex-1 bg-primary hover:bg-primaryDark py-3 rounded-xl font-bold">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DETAILS MODAL -->
+<div id="details-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-6">
+  <div class="bg-surface border border-slate-800 rounded-t-3xl md:rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+    <div id="details-content"></div>
+  </div>
+</div>
+
+<!-- CATEGORY PICKER MODAL -->
+<div id="category-picker-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-end md:items-center justify-center p-0 md:p-6">
+  <div class="bg-surface border border-slate-800 rounded-t-3xl md:rounded-3xl w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl">
+    <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+      <h2 class="text-lg font-black">Pick a Category</h2>
+      <button onclick="closeCategoryPicker()" class="w-9 h-9 rounded-lg hover:bg-slate-800 flex items-center justify-center"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div class="p-4 border-b border-slate-800">
+      <input id="category-picker-search" class="form-input" placeholder="Search or type new…" />
+    </div>
+    <div id="category-picker-list" class="p-4 space-y-2 overflow-y-auto flex-1"></div>
+    <div class="p-4 border-t border-slate-800">
+      <button onclick="pickCategoryNew()" class="w-full bg-primary hover:bg-primaryDark py-2.5 rounded-xl font-bold">Use typed value</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
